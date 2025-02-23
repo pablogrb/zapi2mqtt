@@ -1,0 +1,8 @@
+sensors:
+  Z311:
+    type: Zephyr
+    znumber: 311
+    slot: B
+    latitude: 52.931057000  # optional: override latitude
+    longitude: -1.132273000 # optional: override longitude
+    hass_discovery: True

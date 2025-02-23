@@ -1,0 +1,8 @@
+ZAPI:
+  username: "zapi_user"
+  password: "zapi_password"
+MQTT:
+  username: "mqtt_user"
+  password: "mqtt_password"
+  host: "mqtt_host"
+  port: "mqtt_port"

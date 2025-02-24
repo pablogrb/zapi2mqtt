@@ -13,23 +13,33 @@ from sensors import ZephyrSensor
 
 def zapi2mqtt_sync(userdata, client):
     '''Sync the sensor data from the Zephyr API to the MQTT broker'''
+    minutes = 1
     # loop forever
     # while True
-    for i in range(5):
+    for i in range(3):
         if not client.is_connected():
             print("Waiting for MQTT connection")
-            sleep(60)
+            sleep(minutes * 60)
             continue
         # start an excec timer
         s_t = datetime.now(timezone.utc)
         print(f"Hi from sync #{i}")
 
+        # update the sensor data
+        for _, s_dc in userdata['sensors'].items():
+            if s_dc['type'] == 'Zephyr':
+                # update the sensor data
+                s_dc['sensor'].update()
+                # publish the sensor data
+                s_dc['sensor'].publish(client)
+
+
         # placeholder for the update and publish loop
-        sleep(randint(0, 60))
+        # sleep(randint(0, 60))
 
         # calculate the time to sleep
         e_t = datetime.now(timezone.utc)
-        sleep(60 - (e_t - s_t).total_seconds())
+        sleep((minutes * 60) - (e_t - s_t).total_seconds())
 
 def on_connect(client, userdata, flags, rc, properties):
     '''Callback function for when the client connects to the broker'''

@@ -16,7 +16,7 @@ def zapi2mqtt_sync(userdata, client):
     minutes = 1
     # loop forever
     # while True
-    for i in range(3):
+    for i in range(6):
         if not client.is_connected():
             print("Waiting for MQTT connection")
             sleep(minutes * 60)
@@ -33,10 +33,6 @@ def zapi2mqtt_sync(userdata, client):
                 # publish the sensor data
                 s_dc['sensor'].publish(client)
 
-
-        # placeholder for the update and publish loop
-        # sleep(randint(0, 60))
-
         # calculate the time to sleep
         e_t = datetime.now(timezone.utc)
         sleep((minutes * 60) - (e_t - s_t).total_seconds())
@@ -47,6 +43,10 @@ def on_connect(client, userdata, flags, rc, properties):
     if rc != 0:
         raise ConnectionError(f"Connection failed with result code {rc}")
     print("Connected to MQTT Broker!")
+    # # send the Home Assistant discovery messages
+    # for _, s_dc in userdata['sensors'].items():
+    #     if s_dc['type'] == 'Zephyr':
+    #         s_dc['sensor'].hass_discovery(client)
 
 def zapi2mqtt():
     '''Main function to pull data from the Zephyr API and send it to an MQTT broker'''

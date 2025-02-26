@@ -1,2 +1,6 @@
+# Example data
 /zephyr_data.yml
+# Compiled Python files
 __pycache__/
+# VSCode settings
+.vscode/

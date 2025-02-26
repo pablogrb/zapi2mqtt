@@ -30,11 +30,13 @@ class ZephyrSensor():
         self.znum = znum
         self.slot = userdata['sensors'][znum]['slot']
         self.skey = f"slot{userdata['sensors'][znum]['slot']}"
-        # MQTT topic
-        self.topic = f"zapi2mqtt/zephyr/{znum}"
         # Credentials
         self.username = userdata['creds']['ZAPI']['username']
         self.password = userdata['creds']['ZAPI']['password']
+        # Check if the sensor is available and retrieve the model and firmware
+        self.available = self.zinfo()
+        if not self.available:
+            raise ValueError(f"Zephyr {znum} is not available for user {self.username}")
         # Zephyr Location
         self.loc = SensorLocation()
         if ('latitude' in userdata['sensors'][znum]) and ('longitude' in userdata['sensors'][znum]):
@@ -44,13 +46,38 @@ class ZephyrSensor():
             self.loc_override = False
         # Zephyr measurements
         self.meas = {}
-        self.meas['NO'] = {'apiname': 'NO', 'data': None}
-        self.meas['NO2'] = {'apiname': 'NO2', 'data': None}
-        self.meas['O3'] = {'apiname': 'O3', 'data': None}
-        self.meas['PM1'] = {'apiname': 'particulatePM1', 'data': None}
-        self.meas['PM25'] = {'apiname': 'particulatePM25', 'data': None}
-        self.meas['PM10'] = {'apiname': 'particulatePM10', 'data': None}
-    
+        self.meas['NO'] = {'apiname': 'NO', 'data': None, 'unit': 'µg/m³', 'd_class': 'nitrogen_monoxide'}
+        self.meas['NO2'] = {'apiname': 'NO2', 'data': None, 'unit': 'µg/m³', 'd_class': 'nitrogen_dioxide'}
+        self.meas['O3'] = {'apiname': 'O3', 'data': None, 'unit': 'µg/m³', 'd_class': 'ozone'}
+        self.meas['PM1'] = {'apiname': 'particulatePM1', 'data': None, 'unit': 'µg/m³', 'd_class': 'pm1'}
+        self.meas['PM25'] = {'apiname': 'particulatePM25', 'data': None, 'unit': 'µg/m³', 'd_class': 'pm25'}
+        self.meas['PM10'] = {'apiname': 'particulatePM10', 'data': None, 'unit': 'µg/m³', 'd_class': 'pm10'}
+        # AQI
+        self.aqi = "No Data"
+        # MQTT topic
+        self.topic = f"zapi2mqtt/zephyr/{znum}"
+
+    def zinfo(self):
+        '''Return the Zephyr sensor information'''
+        url = f"https://data.earthsense.co.uk/getzephyrs/{self.username}/{self.password}"
+        # pull the zephyr data from the api
+        with requests.get(url=url, timeout=180) as url:
+            # Check if API request was successful
+            if url.status_code == 200:
+                zephyr_list = json.loads(url.text)
+                print(f"Retrieved zephyr data for user {self.username}")
+            else:
+                raise ValueError(f'API returned: {url.text}')
+
+        # Check if the Zephyr is available
+        for zephyr in zephyr_list:
+            if zephyr['zNumber'] == self.znum:
+                self.model = zephyr['serialNumber'][0:3]
+                self.firmware = zephyr['firmwareVersion']
+                return True
+        return False
+
+
     def update(self):
         '''Update the sensor data from the API'''
         # get the closest 15 minute interval to the datetime
@@ -121,10 +148,82 @@ class ZephyrSensor():
                             zephyr_dict['data'][avg_key]['head']['longitude']['data'][0])
         for meas, mdic in self.meas.items():
             mdic['data'] = zephyr_dict['data'][avg_key][self.skey][mdic['apiname']]['data'][0]
+        
+        # Calculate the AQI
+        self.aqi = self.calc_aqi()
+
+    def calc_aqi(self):
+        '''Calcualte the European Air Quality Index'''
+        # AQI breakpoints
+        aqi_breaks = {
+            'PM25': [10, 20, 25, 50, 75],
+            'PM10': [20, 40, 50, 100, 150],
+            'NO2': [40, 90, 120, 230, 340],
+            'O3': [50, 100, 130, 240, 380],
+            'SO2': [100, 200, 350, 500, 750],
+        }
+        # AQI categories
+        aqi_cats = ['Good', 'Fair', 'Moderate', 'Poor', 'Very Poor', 'Extremely Poor']
+        # Calculate the AQI for each pollutant
+        aqi_list = []
+        for meas, mdic in self.meas.items():
+            if mdic['data'] is not None and meas in aqi_breaks:
+                for i, aqi_break in enumerate(aqi_breaks[meas]):
+                    if mdic['data'] <= aqi_break:
+                        aqi_list.append(i)
+                        break
+        
+        return aqi_cats[max(aqi_list)]
 
     def publish(self, client):
         '''Publish the sensor data to the MQTT broker'''
         for meas, mdic in self.meas.items():
             client.publish(self.topic + "/" + meas, mdic['data'])
-        client.publish(self.topic + "/latitude", self.loc.latitude)
-        client.publish(self.topic + "/longitude", self.loc.longitude)
+        # client.publish(self.topic + "/latitude", self.loc.latitude)
+        # client.publish(self.topic + "/longitude", self.loc.longitude)
+        client.publish(self.topic + "/aqi", self.aqi)
+        # build the location attributes json
+        loc_attr = {
+            "latitude": self.loc.latitude,
+            "longitude": self.loc.longitude
+        }
+        client.publish(self.topic + "/attributes", json.dumps(loc_attr))
+
+    def hass_discovery(self, client):
+        '''Publish the Home Assistant discovery message for every sensor'''
+        # concentration sensor discovery
+        for meas, mdic in self.meas.items():
+            # build the discovery message
+            dis_msg = self.hass_sensor(meas)
+            dis_msg['device'] = self.hass_device()
+            # publish the discovery message
+            client.publish("homeassistant/sensor/" + self.topic + "/" + meas + "/config", json.dumps(dis_msg))
+        # aqi sensor discovery
+        # build the discovery message
+        dis_msg = self.hass_sensor("aqi")
+        dis_msg['device'] = self.hass_device()
+        dis_msg['attributes_topic'] = self.topic + "/attributes"
+        # publish the discovery message
+        client.publish("homeassistant/sensor/" + self.topic + "/aqi/config", json.dumps(dis_msg))
+    
+    def hass_sensor(self, meas):
+        '''Build the Home Assistant sensor discovery message'''
+        return {
+            "state_topic": self.topic + "/" + meas,
+            "name": f"Zephyr {self.znum} {meas}",
+            "unique_id": f"z{self.znum}_{meas}",
+            "unit_of_measurement": self.meas[meas]['unit'],
+            "device_class": self.meas[meas]['d_class'],
+            "state_class": "measurement"
+        }
+
+    def hass_device(self):
+        '''Build the Home Assistant device discovery message'''
+        return {
+            "identifiers":
+                - f"Z{self.znum}",
+            "name": "Zephyr",
+            "manufacturer": "EarthSense",
+            "model": self.model,
+            "sw_version": self.firmware
+        }

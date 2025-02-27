@@ -13,17 +13,17 @@ from sensors import ZephyrSensor
 
 def zapi2mqtt_sync(userdata, client):
     '''Sync the sensor data from the Zephyr API to the MQTT broker'''
-    minutes = 1
+    minutes = 5
     # loop forever
-    # while True
-    for i in range(6):
+    while True:
+    # for i in range(2):
         if not client.is_connected():
             print("Waiting for MQTT connection")
             sleep(minutes * 60)
             continue
         # start an excec timer
         s_t = datetime.now(timezone.utc)
-        print(f"Hi from sync #{i}")
+        # print(f"Hi from sync #{i}")
 
         # update the sensor data
         for _, s_dc in userdata['sensors'].items():
@@ -43,10 +43,10 @@ def on_connect(client, userdata, flags, rc, properties):
     if rc != 0:
         raise ConnectionError(f"Connection failed with result code {rc}")
     print("Connected to MQTT Broker!")
-    # # send the Home Assistant discovery messages
-    # for _, s_dc in userdata['sensors'].items():
-    #     if s_dc['type'] == 'Zephyr':
-    #         s_dc['sensor'].hass_discovery(client)
+    # send the Home Assistant discovery messages
+    for _, s_dc in userdata['sensors'].items():
+        if s_dc['type'] == 'Zephyr' and s_dc['hass_discovery'] is True:
+            s_dc['sensor'].hass_discovery(client)
 
 def zapi2mqtt():
     '''Main function to pull data from the Zephyr API and send it to an MQTT broker'''

@@ -146,7 +146,7 @@ class ZephyrSensor():
         if not self.loc.loc_override:
             self.loc.update(zephyr_dict['data'][avg_key]['head']['latitude']['data'][0],
                             zephyr_dict['data'][avg_key]['head']['longitude']['data'][0])
-        for meas, mdic in self.meas.items():
+        for _, mdic in self.meas.items():
             mdic['data'] = zephyr_dict['data'][avg_key][self.skey][mdic['apiname']]['data'][0]
         
         # Calculate the AQI
@@ -173,7 +173,8 @@ class ZephyrSensor():
                         aqi_list.append(i)
                         break
         
-        return aqi_cats[max(aqi_list)]
+        # return aqi_cats[max(aqi_list)]
+        return max(aqi_list)
 
     def publish(self, client):
         '''Publish the sensor data to the MQTT broker'''
@@ -191,37 +192,44 @@ class ZephyrSensor():
 
     def hass_discovery(self, client):
         '''Publish the Home Assistant discovery message for every sensor'''
+        print(f"Publishing Home Assistant discovery messages for Zephyr {self.znum}")
         # concentration sensor discovery
-        for meas, mdic in self.meas.items():
+        for meas in self.meas:
             # build the discovery message
             dis_msg = self.hass_sensor(meas)
             dis_msg['device'] = self.hass_device()
             # publish the discovery message
-            client.publish("homeassistant/sensor/" + self.topic + "/" + meas + "/config", json.dumps(dis_msg))
+            client.publish(f"homeassistant/sensor/z{str(self.znum)}_{meas}/config", json.dumps(dis_msg), retain=True)
         # aqi sensor discovery
         # build the discovery message
         dis_msg = self.hass_sensor("aqi")
         dis_msg['device'] = self.hass_device()
-        dis_msg['attributes_topic'] = self.topic + "/attributes"
+        dis_msg['json_attributes_topic'] = self.topic + "/attributes"
         # publish the discovery message
-        client.publish("homeassistant/sensor/" + self.topic + "/aqi/config", json.dumps(dis_msg))
+        client.publish(f"homeassistant/sensor/z{self.znum}_aqi/config", json.dumps(dis_msg), retain=True)
     
     def hass_sensor(self, meas):
         '''Build the Home Assistant sensor discovery message'''
-        return {
-            "state_topic": self.topic + "/" + meas,
+        dis_msg = {
             "name": f"Zephyr {self.znum} {meas}",
             "unique_id": f"z{self.znum}_{meas}",
-            "unit_of_measurement": self.meas[meas]['unit'],
-            "device_class": self.meas[meas]['d_class'],
-            "state_class": "measurement"
+            "object_id": f"z{self.znum}_{meas}",
+            "qos": "0",
+            "force_update": "true",
+            "state_topic": self.topic + "/" + meas,
         }
+        if meas == "aqi":
+            dis_msg['device_class'] = "aqi"
+            return dis_msg
+        dis_msg['state_class'] = "measurement"
+        dis_msg['unit_of_measurement'] = self.meas[meas]['unit']
+        dis_msg['device_class'] = self.meas[meas]['d_class']
+        return dis_msg
 
     def hass_device(self):
         '''Build the Home Assistant device discovery message'''
         return {
-            "identifiers":
-                - f"Z{self.znum}",
+            "identifiers": [f"Z{self.znum}"],
             "name": "Zephyr",
             "manufacturer": "EarthSense",
             "model": self.model,

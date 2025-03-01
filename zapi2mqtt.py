@@ -1,15 +1,22 @@
 '''Pulls data from the Zephyr API and sends it to an MQTT broker'''
 
 # Imports
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from time import sleep
-from random import randint
 
 import yaml
 from paho.mqtt import client as mqtt
 
 from sensors import ZephyrSensor
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+)
+logger = logging.getLogger(__name__)
+# pylint: disable=logging-fstring-interpolation
 
 def zapi2mqtt_sync(userdata, client):
     '''Sync the sensor data from the Zephyr API to the MQTT broker'''
@@ -18,12 +25,12 @@ def zapi2mqtt_sync(userdata, client):
     while True:
     # for i in range(2):
         if not client.is_connected():
-            print("Waiting for MQTT connection")
+            logger.info("Waiting for MQTT connection")
             sleep(minutes * 60)
             continue
         # start an excec timer
         s_t = datetime.now(timezone.utc)
-        # print(f"Hi from sync #{i}")
+        # logger.info(f"Hi from sync #{i}")
 
         # update the sensor data
         for _, s_dc in userdata['sensors'].items():
@@ -42,7 +49,7 @@ def on_connect(client, userdata, flags, rc, properties):
     # check if the connection was successful
     if rc != 0:
         raise ConnectionError(f"Connection failed with result code {rc}")
-    print("Connected to MQTT Broker!")
+    logger.info("Connected to MQTT Broker!")
     # send the Home Assistant discovery messages
     for _, s_dc in userdata['sensors'].items():
         if s_dc['type'] == 'Zephyr' and s_dc['hass_discovery'] is True:
@@ -53,23 +60,23 @@ def zapi2mqtt():
     # detect if running in docker
     if Path("/.dockerenv").exists():
         basepath = Path("/zapi2mqtt")
-        print("Running in Docker")
+        logger.info("Running in Docker")
         # list the contents of the basepath
-        print(list(basepath.iterdir()))
+        logger.info(list(basepath.iterdir()))
     else:
         basepath = Path(__file__).parent
-    
+
     # load the config file
     with open(Path(f"{basepath}/config/creds.yml"), "r", encoding="utf-8") as in_file:
         creds = yaml.safe_load(in_file)
-        print(f"{basepath}/config/creds.yml")
-        print(creds)
-    
+        logger.info(f"{basepath}/config/creds.yml")
+        logger.info(creds)
+
     # load the sensors
     with open(Path(f"{basepath}/config/sensors.yml"), "r", encoding='utf-8') as in_file:
         sensors = yaml.safe_load(in_file)
-        print(f"{basepath}/config/sensors.yml")
-        print(sensors)
+        logger.info(f"{basepath}/config/sensors.yml")
+        logger.info(sensors)
 
     # package the config data into the userdata variable
     userdata = {
@@ -78,7 +85,7 @@ def zapi2mqtt():
     }
 
     # Initialize the sensors
-    print("Initializing sensors")
+    logger.info("Initializing sensors")
     for znum, s_dc in userdata['sensors'].items():
         if s_dc['type'] == 'Zephyr':
             # Initialize the Zephyr sensor
@@ -87,14 +94,14 @@ def zapi2mqtt():
             s_dc['sensor'].update()
 
     # Setup the mqtt client
-    print("Setting up MQTT client")
+    logger.info("Setting up MQTT client")
     client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
         userdata=userdata
     )
     client.on_connect = on_connect
     # connect to the mqtt broker using username / password authentication
-    print("Connecting to MQTT broker")
+    logger.info("Connecting to MQTT broker")
     client.username_pw_set(
         creds['MQTT']['username'], creds['MQTT']['password']
     )
@@ -102,7 +109,7 @@ def zapi2mqtt():
     client.loop_start()
 
     zapi2mqtt_sync(userdata, client)
-    
+
     # Disconnect from the MQTT broker
     client.loop_stop()
     client.disconnect()

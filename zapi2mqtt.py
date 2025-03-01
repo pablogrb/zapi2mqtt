@@ -50,13 +50,26 @@ def on_connect(client, userdata, flags, rc, properties):
 
 def zapi2mqtt():
     '''Main function to pull data from the Zephyr API and send it to an MQTT broker'''
+    # detect if running in docker
+    if Path("/.dockerenv").exists():
+        basepath = Path("/zapi2mqtt")
+        print("Running in Docker")
+        # list the contents of the basepath
+        print(list(basepath.iterdir()))
+    else:
+        basepath = Path(__file__).parent
+    
     # load the config file
-    with open(Path("creds.yml"), "r", encoding="utf-8") as in_file:
+    with open(Path(f"{basepath}/config/creds.yml"), "r", encoding="utf-8") as in_file:
         creds = yaml.safe_load(in_file)
+        print(f"{basepath}/config/creds.yml")
+        print(creds)
     
     # load the sensors
-    with open(Path('sensors.yml'), "r", encoding='utf-8') as in_file:
+    with open(Path(f"{basepath}/config/sensors.yml"), "r", encoding='utf-8') as in_file:
         sensors = yaml.safe_load(in_file)
+        print(f"{basepath}/config/sensors.yml")
+        print(sensors)
 
     # package the config data into the userdata variable
     userdata = {

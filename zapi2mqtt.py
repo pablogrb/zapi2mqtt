@@ -60,6 +60,7 @@ def zapi2mqtt():
     # detect if running in docker
     if Path("/.dockerenv").exists():
         logger.info("Running in Docker")
+        basepath = "/zapi2mqtt"
     else:
         basepath = Path(__file__).parent
 

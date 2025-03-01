@@ -15,7 +15,7 @@ from sensors import ZephyrSensor
 logging.basicConfig(
     level=logging.INFO,
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("zapi2mqtt")
 # pylint: disable=logging-fstring-interpolation
 
 def zapi2mqtt_sync(userdata, client):
@@ -59,24 +59,17 @@ def zapi2mqtt():
     '''Main function to pull data from the Zephyr API and send it to an MQTT broker'''
     # detect if running in docker
     if Path("/.dockerenv").exists():
-        basepath = Path("/zapi2mqtt")
         logger.info("Running in Docker")
-        # list the contents of the basepath
-        logger.info(list(basepath.iterdir()))
     else:
         basepath = Path(__file__).parent
 
     # load the config file
     with open(Path(f"{basepath}/config/creds.yml"), "r", encoding="utf-8") as in_file:
         creds = yaml.safe_load(in_file)
-        logger.info(f"{basepath}/config/creds.yml")
-        logger.info(creds)
 
     # load the sensors
     with open(Path(f"{basepath}/config/sensors.yml"), "r", encoding='utf-8') as in_file:
         sensors = yaml.safe_load(in_file)
-        logger.info(f"{basepath}/config/sensors.yml")
-        logger.info(sensors)
 
     # package the config data into the userdata variable
     userdata = {

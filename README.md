@@ -3,13 +3,16 @@ This project is designed to pull data from the Zephyr API and send it to an MQTT
 
 ## Project Structure
 ```
-zapi2mqtt
-├── Dockerfile
-├── zapi2mqtt.py
-├── sensors.py
-├── creds.yml
+zapi2mqtt/
+├─ .github/
+│  ├─ workflows/
+│  │  ├─ docker-publish.yml
+├─ config/
+│  ├─ creds.yml
+│  ├─ sensors.yml
+├── README.md
 ├── sensors.yml
-└── README.md
+└── zapi2mqtt.py
 ```
 
 ## Requirements
@@ -21,20 +24,17 @@ zapi2mqtt
 - **sensors.yml**: Defines the configuration for the sensors, including their types and settings.
 
 ## Docker Setup
-To run the project using Docker, ensure you have Docker installed on your machine. The `Dockerfile` is set up to allow access to the YAML configuration files from a bind-mounted folder.
 
-### Building the Docker Image
-Navigate to the directory where the image will be created and run the following command to build the Docker image:
-```
-docker build --network=host -t zapi2mqtt:latest /home/pablogrb/docker_dev/zapi2mqtt
-```
+### Image
 
-### Running the Docker Container
-To run the Docker container with access to the configuration files, use the following command:
-```
-docker run -v /path/to/your/config:/zapi2mqtt zapi2mqtt
-```
-Replace `/path/to/your/config` with the path to the directory containing your `creds.yml` and `sensors.yml` files.
+The image can be pulled from the [ghcr.io/pablogrb/zapi2mqtt:latest](ghcr.io/pablogrb/zapi2mqtt:latest)
 
-## Usage
-Once the container is running, the script will continuously pull data from the Zephyr API and publish it to the specified MQTT broker. Ensure that the MQTT broker is accessible and properly configured in the `creds.yml` file.
+### Binds
+
+A local folder with your version of the configuration files is required to run the container. The default configuration provided is for reference purposes only.
+
+### Example docker run
+Run from the folder where you stored your version of the configuration files.
+```
+docker run --name zapi2mqtt -v "$(pwd)$":/zapi2mqtt/config ghcr.io/pablogrb/zapi2mqtt:latest
+```

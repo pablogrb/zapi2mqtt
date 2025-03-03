@@ -2,6 +2,7 @@
 # imports
 import json
 import logging
+import sys
 from datetime import datetime, timedelta, timezone
 from time import sleep
 
@@ -44,7 +45,11 @@ class ZephyrSensor():
         # Check if the sensor is available and retrieve the model and firmware
         self.available = self.zinfo()
         if not self.available:
-            raise ValueError(f"Zephyr {znum} is not available for user {self.username}")
+            try:
+                raise ValueError(f"Zephyr {znum} is not available for user {self.username}")
+            except ValueError as e:
+                logger.error(e)
+                sys.exit(1)
         # Zephyr Location
         self.loc = SensorLocation()
         if ('latitude' in userdata['sensors'][znum]) and ('longitude' in userdata['sensors'][znum]):
@@ -75,7 +80,11 @@ class ZephyrSensor():
                 zephyr_list = json.loads(url.text)
                 logger.info(f"Retrieved zephyr data for user {self.username}")
             else:
-                raise ValueError(f'API returned: {url.text}')
+                try:
+                    raise ValueError(f'API returned: {url.text}')
+                except ValueError as e:
+                    logger.error(e)
+                    sys.exit(1)
 
         # Check if the Zephyr is available
         for zephyr in zephyr_list:
@@ -141,9 +150,17 @@ class ZephyrSensor():
                     logger.warning(f"API responded 401, trying again (attempt = {req_try})")
                     sleep(15)
                     continue
-                raise ValueError(f'API returned: {url.text}')
+                try:
+                    raise ValueError(f'API returned: {url.text}')
+                except ValueError as e:
+                    logger.error(e)
+                    sys.exit(1)
         else:
-            raise RuntimeError(f'API failed to respond OK after {tries} tries')
+            try:
+                raise RuntimeError(f'API failed to respond OK after {tries} tries')
+            except RuntimeError as e:
+                logger.error(e)
+            return
 
         # Parse the dictionary into the sensor data
         avg_key = ''

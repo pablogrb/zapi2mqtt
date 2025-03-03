@@ -2,13 +2,13 @@
 
 # Imports
 import logging
+import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from time import sleep
 
 import yaml
 from paho.mqtt import client as mqtt
-
 from sensors import ZephyrSensor
 
 # Set up logging
@@ -48,7 +48,11 @@ def on_connect(client, userdata, flags, rc, properties):
     '''Callback function for when the client connects to the broker'''
     # check if the connection was successful
     if rc != 0:
-        raise ConnectionError(f"Connection failed with result code {rc}")
+        try:
+            raise ConnectionError(f"Connection failed with result code {rc}")
+        except ConnectionError as e:
+            logger.error(e)
+            sys.exit(1)
     logger.info("Connected to MQTT Broker!")
     # send the Home Assistant discovery messages
     for _, s_dc in userdata['sensors'].items():

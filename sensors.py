@@ -1,5 +1,6 @@
 '''Class definition for the zapi sensors'''
 # imports
+import dataclasses
 import json
 import logging
 import sys
@@ -13,28 +14,30 @@ logging.basicConfig(
     level=logging.INFO,
 )
 logger = logging.getLogger(__name__)
-# pylint: disable=logging-fstring-interpolation
 
-# Location object
+# Dataclasses
+@dataclasses.dataclass
 class SensorLocation():
     '''Class definition for a sensor location'''
-    def __init__(self):
-        '''Initialize the sensor location'''
-        self.loc_override = False
-        self.latitude = None
-        self.longitude = None
+    loc_override: bool = False
+    latitude: float = None
+    longitude: float = None
 
-    def update(self, latitude, longitude):
-        '''Update the sensor location'''
-        self.latitude = latitude
-        self.longitude = longitude
+@dataclasses.dataclass
+class ZephyMeasurement():
+    '''Class definition for a Zephyr measurement'''
+    name: str = None
+    apiname: str = None
+    unit: str = None
+    device_class: str = None
+    data: float = None
 
 # EarthSense Zephyr
 class ZephyrSensor():
     '''Class definition for an EarthSense Zephyr sensor'''
     def __init__(self, znum, userdata):
         '''Initialize the Zephyr sensor'''
-        logger.info(f"Initializing Zephyr sensor {znum}")
+        logger.info("Initializing Zephyr sensor %s", znum)
         # Zephyr Number and slot
         self.znum = znum
         self.slot = userdata['sensors'][znum]['slot']
@@ -47,24 +50,27 @@ class ZephyrSensor():
         if not self.available:
             try:
                 raise ValueError(f"Zephyr {znum} is not available for user {self.username}")
-            except ValueError as e:
-                logger.error(e)
+            except ValueError as exc:
+                logger.error(exc)
                 sys.exit(1)
         # Zephyr Location
-        self.loc = SensorLocation()
         if ('latitude' in userdata['sensors'][znum]) and ('longitude' in userdata['sensors'][znum]):
-            self.loc.loc_override = True
-            self.loc.update(userdata['sensors'][znum]['latitude'], userdata['sensors'][znum]['longitude'])
+            self.loc = SensorLocation(
+                loc_override=True,
+                latitude=userdata['sensors'][znum]['latitude'],
+                longitude=userdata['sensors'][znum]['longitude']
+            )
         else:
-            self.loc_override = False
+            self.loc = SensorLocation()
         # Zephyr measurements
-        self.meas = {}
-        self.meas['NO'] = {'apiname': 'NO', 'data': None, 'unit': 'µg/m³', 'd_class': 'nitrogen_monoxide'}
-        self.meas['NO2'] = {'apiname': 'NO2', 'data': None, 'unit': 'µg/m³', 'd_class': 'nitrogen_dioxide'}
-        self.meas['O3'] = {'apiname': 'O3', 'data': None, 'unit': 'µg/m³', 'd_class': 'ozone'}
-        self.meas['PM1'] = {'apiname': 'particulatePM1', 'data': None, 'unit': 'µg/m³', 'd_class': 'pm1'}
-        self.meas['PM25'] = {'apiname': 'particulatePM25', 'data': None, 'unit': 'µg/m³', 'd_class': 'pm25'}
-        self.meas['PM10'] = {'apiname': 'particulatePM10', 'data': None, 'unit': 'µg/m³', 'd_class': 'pm10'}
+        self.meas = [
+            ZephyMeasurement('NO', 'NO', 'µg/m³', 'nitrogen_monoxide', None),
+            ZephyMeasurement('NO2', 'NO2', 'µg/m³', 'nitrogen_dioxide', None),
+            ZephyMeasurement('O3', 'O3', 'µg/m³', 'ozone', None),
+            ZephyMeasurement('PM1', 'particulatePM1', 'µg/m³', 'pm1', None),
+            ZephyMeasurement('PM25', 'particulatePM25', 'µg/m³', 'pm25', None),
+            ZephyMeasurement('PM10', 'particulatePM10', 'µg/m³', 'pm10', None),
+        ]
         # AQI
         self.aqi = "No Data"
         # MQTT topic
@@ -78,12 +84,12 @@ class ZephyrSensor():
             # Check if API request was successful
             if url.status_code == 200:
                 zephyr_list = json.loads(url.text)
-                logger.info(f"Retrieved zephyr data for user {self.username}")
+                logger.info("Retrieved zephyr data for user %s", self.username)
             else:
                 try:
                     raise ValueError(f'API returned: {url.text}')
-                except ValueError as e:
-                    logger.error(e)
+                except ValueError as exc:
+                    logger.error(exc)
                     sys.exit(1)
 
         # Check if the Zephyr is available
@@ -137,29 +143,36 @@ class ZephyrSensor():
         }
 
         # HACK: try the api 5 times to deal with random 401 unauthorized errors
-        tries=5
+        tries = 5
         for req_try in range(tries):
-            # pull the zephyr data from the api
-            with requests.get(url=req_url, headers=req_headers, timeout=180) as url:
-                # Check if API request was successful
-                if url.status_code == 200:
-                    zephyr_dict = json.loads(url.text)
-                    logger.info(f"Retrieved zephyr data for {self.znum}")
-                    break
-                if url.status_code == 401:
-                    logger.warning(f"API responded 401, trying again (attempt = {req_try})")
-                    sleep(15)
-                    continue
-                try:
-                    raise ValueError(f'API returned: {url.text}')
-                except ValueError as e:
-                    logger.error(e)
-                    sys.exit(1)
+            # catch connection errors in cases of slow dns
+            try:
+                # pull the zephyr data from the api
+                with requests.get(url=req_url, headers=req_headers, timeout=180) as url:
+                    # Check if API request was successful
+                    if url.status_code == 200:
+                        zephyr_dict = json.loads(url.text)
+                        logger.info("Retrieved zephyr data for %s", self.znum)
+                        break
+                    if url.status_code == 401:
+                        logger.warning("API responded 401, trying again (attempt = %s", req_try)
+                        sleep(15)
+                        continue
+                    try:
+                        raise ValueError(f'API returned: {url.text}')
+                    except ValueError as exc:
+                        logger.error(exc)
+                        sys.exit(1)
+            except requests.exceptions.ConnectionError as exc:
+                logger.warning("Connection error, trying again (attempt = %s)", req_try)
+                logger.warning(exc)
+                sleep(15)
+                continue
         else:
             try:
                 raise RuntimeError(f'API failed to respond OK after {tries} tries')
-            except RuntimeError as e:
-                logger.error(e)
+            except RuntimeError as exc:
+                logger.error(exc)
             return
 
         # Parse the dictionary into the sensor data
@@ -169,10 +182,10 @@ class ZephyrSensor():
         elif avg_id == "15":
             avg_key = '5 minute averaging on the hour'
         if not self.loc.loc_override:
-            self.loc.update(zephyr_dict['data'][avg_key]['head']['latitude']['data'][0],
-                            zephyr_dict['data'][avg_key]['head']['longitude']['data'][0])
-        for _, mdic in self.meas.items():
-            mdic['data'] = zephyr_dict['data'][avg_key][self.skey][mdic['apiname']]['data'][0]
+            self.loc.latitude = zephyr_dict['data'][avg_key]['head']['latitude']['data'][0]
+            self.loc.longitude = zephyr_dict['data'][avg_key]['head']['longitude']['data'][0]
+        for meas in self.meas:
+            meas.data = zephyr_dict['data'][avg_key][self.skey][meas.apiname]['data'][0]
 
         # Calculate the AQI
         self.aqi = self.calc_aqi()
@@ -191,10 +204,10 @@ class ZephyrSensor():
         # aqi_cats = ['Good', 'Fair', 'Moderate', 'Poor', 'Very Poor', 'Extremely Poor']
         # Calculate the AQI for each pollutant
         aqi_list = []
-        for meas, mdic in self.meas.items():
-            if mdic['data'] is not None and meas in aqi_breaks:
-                for i, aqi_break in enumerate(aqi_breaks[meas]):
-                    if mdic['data'] <= aqi_break:
+        for meas in self.meas:
+            if meas.data is not None and meas.name in aqi_breaks:
+                for i, aqi_break in enumerate(aqi_breaks[meas.name]):
+                    if meas.data <= aqi_break:
                         aqi_list.append(i)
                         break
 
@@ -203,10 +216,8 @@ class ZephyrSensor():
 
     def publish(self, client):
         '''Publish the sensor data to the MQTT broker'''
-        for meas, mdic in self.meas.items():
-            client.publish(self.topic + "/" + meas, mdic['data'])
-        # client.publish(self.topic + "/latitude", self.loc.latitude)
-        # client.publish(self.topic + "/longitude", self.loc.longitude)
+        for meas in self.meas:
+            client.publish(self.topic + "/" + meas.name, meas.data)
         client.publish(self.topic + "/aqi", self.aqi)
         # build the location attributes json
         loc_attr = {
@@ -217,21 +228,27 @@ class ZephyrSensor():
 
     def hass_discovery(self, client):
         '''Publish the Home Assistant discovery message for every sensor'''
-        logger.info(f"Publishing Home Assistant discovery messages for Zephyr {self.znum}")
+        logger.info("Publishing Home Assistant discovery messages for Zephyr %s", self.znum)
         # concentration sensor discovery
         for meas in self.meas:
             # build the discovery message
             dis_msg = self.hass_sensor(meas)
             dis_msg['device'] = self.hass_device()
             # publish the discovery message
-            client.publish(f"homeassistant/sensor/z{str(self.znum)}_{meas}/config", json.dumps(dis_msg), retain=True)
+            client.publish(
+                f"homeassistant/sensor/z{str(self.znum)}_{meas}/config",
+                json.dumps(dis_msg), retain=True
+            )
         # aqi sensor discovery
         # build the discovery message
         dis_msg = self.hass_sensor("aqi")
         dis_msg['device'] = self.hass_device()
         dis_msg['json_attributes_topic'] = self.topic + "/attributes"
         # publish the discovery message
-        client.publish(f"homeassistant/sensor/z{self.znum}_aqi/config", json.dumps(dis_msg), retain=True)
+        client.publish(
+            f"homeassistant/sensor/z{self.znum}_aqi/config",
+            json.dumps(dis_msg), retain=True
+        )
 
     def hass_sensor(self, meas):
         '''Build the Home Assistant sensor discovery message'''
@@ -241,14 +258,16 @@ class ZephyrSensor():
             "object_id": f"z{self.znum}_{meas}",
             "qos": "0",
             "force_update": "true",
-            "state_topic": self.topic + "/" + meas,
         }
         if meas == "aqi":
+            dis_msg["state_topic"] = self.topic + "/aqi"
             dis_msg['device_class'] = "aqi"
             return dis_msg
+
+        dis_msg["state_topic"] = self.topic + "/" + meas.name
         dis_msg['state_class'] = "measurement"
-        dis_msg['unit_of_measurement'] = self.meas[meas]['unit']
-        dis_msg['device_class'] = self.meas[meas]['d_class']
+        dis_msg['unit_of_measurement'] = meas.unit
+        dis_msg['device_class'] = meas.device_class
         return dis_msg
 
     def hass_device(self):

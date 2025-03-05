@@ -4,3 +4,5 @@
 __pycache__/
 # VSCode settings
 .vscode/
+# virtual env for testing
+.venv/

@@ -46,12 +46,13 @@ def zapi2mqtt_sync(userdata, client):
 
 def on_connect(client, userdata, flags, rc, properties):
     '''Callback function for when the client connects to the broker'''
+    del flags, properties
     # check if the connection was successful
     if rc != 0:
         try:
             raise ConnectionError(f"Connection failed with result code {rc}")
-        except ConnectionError as e:
-            logger.error(e)
+        except ConnectionError as exc:
+            logger.error(exc)
             sys.exit(1)
     logger.info("Connected to MQTT Broker!")
     # send the Home Assistant discovery messages

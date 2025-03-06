@@ -154,6 +154,10 @@ class ZephyrSensor():
                         zephyr_dict = json.loads(url.text)
                         logger.info("Retrieved zephyr data for %s", self.znum)
                         break
+                    if url.status_code == 240:
+                        # no data available
+                        logger.warning("No data available for %s", self.znum)
+                        return False
                     if url.status_code == 401:
                         logger.warning("API responded 401, trying again (attempt = %s", req_try)
                         sleep(15)
@@ -169,11 +173,8 @@ class ZephyrSensor():
                 sleep(15)
                 continue
         else:
-            try:
-                raise RuntimeError(f'API failed to respond OK after {tries} tries')
-            except RuntimeError as exc:
-                logger.error(exc)
-            return
+            logger.warning("API failed to respond OK after %s tries", tries)
+            return False
 
         # Parse the dictionary into the sensor data
         avg_key = ''
@@ -189,6 +190,8 @@ class ZephyrSensor():
 
         # Calculate the AQI
         self.aqi = self.calc_aqi()
+
+        return True
 
     def calc_aqi(self):
         '''Calcualte the European Air Quality Index'''

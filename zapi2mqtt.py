@@ -36,9 +36,9 @@ def zapi2mqtt_sync(userdata, client):
         for _, s_dc in userdata['sensors'].items():
             if s_dc['type'] == 'Zephyr':
                 # update the sensor data
-                s_dc['sensor'].update()
-                # publish the sensor data
-                s_dc['sensor'].publish(client)
+                if s_dc['sensor'].update():
+                    # publish the sensor data
+                    s_dc['sensor'].publish(client)
 
         # calculate the time to sleep
         e_t = datetime.now(timezone.utc)

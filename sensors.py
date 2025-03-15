@@ -154,19 +154,23 @@ class ZephyrSensor():
                         zephyr_dict = json.loads(url.text)
                         logger.info("Retrieved zephyr data for %s", self.znum)
                         break
+                    # no data available
                     if url.status_code == 240:
-                        # no data available
                         logger.warning("No data available for %s", self.znum)
                         return False
-                    if url.status_code == 401:
-                        logger.warning("API responded 401, trying again (attempt = %s", req_try)
+                    # retry on 401 unauthorized or 500 internal server error
+                    if url.status_code == 401 or url.status_code == 500:
+                        logger.warning("API responded %i, trying again (attempt = %s",
+                                       url.status_code, req_try)
                         sleep(15)
                         continue
+                    # raise an error and exit on any other status code
                     try:
                         raise ValueError(f'API returned: {url.text}')
                     except ValueError as exc:
                         logger.error(exc)
                         sys.exit(1)
+            # catch connection errors
             except requests.exceptions.ConnectionError as exc:
                 logger.warning("Connection error, trying again (attempt = %s)", req_try)
                 logger.warning(exc)

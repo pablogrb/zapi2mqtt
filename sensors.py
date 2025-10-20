@@ -201,11 +201,11 @@ class ZephyrSensor():
         '''Calcualte the European Air Quality Index'''
         # AQI breakpoints
         aqi_breaks = {
-            'PM25': [10, 20, 25, 50, 75],
-            'PM10': [20, 40, 50, 100, 150],
-            'NO2': [40, 90, 120, 230, 340],
-            'O3': [50, 100, 130, 240, 380],
-            'SO2': [100, 200, 350, 500, 750],
+            'PM25': [5, 15, 50, 90, 140],
+            'PM10': [15, 45, 120, 195, 270],
+            'NO2': [10, 25, 60, 100, 150],
+            'O3': [60, 100, 120, 160, 180],
+            'SO2': [20, 40, 125, 190, 275],
         }
         # AQI categories
         # aqi_cats = ['Good', 'Fair', 'Moderate', 'Poor', 'Very Poor', 'Extremely Poor']

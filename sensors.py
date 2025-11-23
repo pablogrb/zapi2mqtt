@@ -64,12 +64,12 @@ class ZephyrSensor():
             self.loc = SensorLocation()
         # Zephyr measurements
         self.meas = [
-            ZephyMeasurement('NO', 'NO', 'µg/m³', 'nitrogen_monoxide', None),
-            ZephyMeasurement('NO2', 'NO2', 'µg/m³', 'nitrogen_dioxide', None),
-            ZephyMeasurement('O3', 'O3', 'µg/m³', 'ozone', None),
-            ZephyMeasurement('PM1', 'particulatePM1', 'µg/m³', 'pm1', None),
-            ZephyMeasurement('PM25', 'particulatePM25', 'µg/m³', 'pm25', None),
-            ZephyMeasurement('PM10', 'particulatePM10', 'µg/m³', 'pm10', None),
+            ZephyMeasurement('NO', 'NO', 'ug/m3', 'nitrogen_monoxide', None),
+            ZephyMeasurement('NO2', 'NO2', 'ug/m3', 'nitrogen_dioxide', None),
+            ZephyMeasurement('O3', 'O3', 'ug/m3', 'ozone', None),
+            ZephyMeasurement('PM1', 'particulatePM1', 'ug/m3', 'pm1', None),
+            ZephyMeasurement('PM25', 'particulatePM25', 'ug/m3', 'pm25', None),
+            ZephyMeasurement('PM10', 'particulatePM10', 'ug/m3', 'pm10', None),
         ]
         # AQI
         self.aqi = "No Data"
@@ -262,7 +262,7 @@ class ZephyrSensor():
         dis_msg = {
             "name": f"Zephyr {self.znum} {meas}",
             "unique_id": f"z{self.znum}_{meas}",
-            "object_id": f"z{self.znum}_{meas}",
+            "default_entity_id": f"z{self.znum}_{meas}",
             "qos": "0",
             "force_update": "true",
         }

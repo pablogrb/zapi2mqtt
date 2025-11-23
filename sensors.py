@@ -24,7 +24,7 @@ class SensorLocation():
     longitude: float = None
 
 @dataclasses.dataclass
-class ZephyMeasurement():
+class ZephyrMeasurement():
     '''Class definition for a Zephyr measurement'''
     name: str = None
     apiname: str = None
@@ -64,12 +64,13 @@ class ZephyrSensor():
             self.loc = SensorLocation()
         # Zephyr measurements
         self.meas = [
-            ZephyMeasurement('NO', 'NO', 'ug/m3', 'nitrogen_monoxide', None),
-            ZephyMeasurement('NO2', 'NO2', 'ug/m3', 'nitrogen_dioxide', None),
-            ZephyMeasurement('O3', 'O3', 'ug/m3', 'ozone', None),
-            ZephyMeasurement('PM1', 'particulatePM1', 'ug/m3', 'pm1', None),
-            ZephyMeasurement('PM25', 'particulatePM25', 'ug/m3', 'pm25', None),
-            ZephyMeasurement('PM10', 'particulatePM10', 'ug/m3', 'pm10', None),
+            ZephyrMeasurement('NO', 'NO', 'µg/m³', 'nitrogen_monoxide', None),
+            ZephyrMeasurement('NO2', 'NO2', 'µg/m³', 'nitrogen_dioxide', None),
+            ZephyrMeasurement('O3', 'O3', 'µg/m³', 'ozone', None),
+            ZephyrMeasurement('PM1', 'particulatePM1', 'µg/m³', 'pm1', None),
+            ZephyrMeasurement('PM25', 'particulatePM25', 'µg/m³', 'pm25', None),
+            ZephyrMeasurement('PM10', 'particulatePM10', 'µg/m³', 'pm10', None),
+            ZephyrMeasurement('aqi', '', '', 'aqi', None)
         ]
         # AQI
         self.aqi = "No Data"
@@ -190,6 +191,8 @@ class ZephyrSensor():
             self.loc.latitude = zephyr_dict['data'][avg_key]['head']['latitude']['data'][0]
             self.loc.longitude = zephyr_dict['data'][avg_key]['head']['longitude']['data'][0]
         for meas in self.meas:
+            if meas.name == 'aqi':
+                continue
             meas.data = zephyr_dict['data'][avg_key][self.skey][meas.apiname]['data'][0]
 
         # Calculate the AQI
@@ -241,32 +244,24 @@ class ZephyrSensor():
             # build the discovery message
             dis_msg = self.hass_sensor(meas)
             dis_msg['device'] = self.hass_device()
+            if meas.name == 'aqi':
+                dis_msg['json_attributes_topic'] = self.topic + "/attributes"
             # publish the discovery message
             client.publish(
-                f"homeassistant/sensor/z{str(self.znum)}_{meas}/config",
+                f"homeassistant/sensor/z{str(self.znum)}_{meas.name}/config",
                 json.dumps(dis_msg), retain=True
             )
-        # aqi sensor discovery
-        # build the discovery message
-        dis_msg = self.hass_sensor("aqi")
-        dis_msg['device'] = self.hass_device()
-        dis_msg['json_attributes_topic'] = self.topic + "/attributes"
-        # publish the discovery message
-        client.publish(
-            f"homeassistant/sensor/z{self.znum}_aqi/config",
-            json.dumps(dis_msg), retain=True
-        )
 
     def hass_sensor(self, meas):
         '''Build the Home Assistant sensor discovery message'''
         dis_msg = {
-            "name": f"Zephyr {self.znum} {meas}",
-            "unique_id": f"z{self.znum}_{meas}",
-            "default_entity_id": f"z{self.znum}_{meas}",
+            "name": f"Zephyr {self.znum} {meas.name}",
+            "unique_id": f"z{self.znum}_{meas.name}",
+            "default_entity_id": f"z{self.znum}_{meas.name}",
             "qos": "0",
             "force_update": "true",
         }
-        if meas == "aqi":
+        if meas.name == "aqi":
             dis_msg["state_topic"] = self.topic + "/aqi"
             dis_msg['device_class'] = "aqi"
             return dis_msg

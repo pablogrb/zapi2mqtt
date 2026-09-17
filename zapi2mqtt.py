@@ -9,6 +9,7 @@ from time import sleep
 
 import yaml
 from paho.mqtt import client as mqtt
+from paho.mqtt.enums import CallbackAPIVersion
 
 from sensors import ZephyrSensor
 
@@ -35,12 +36,10 @@ def zapi2mqtt_sync(userdata, client):
         # logger.info(f"Hi from sync #{i}")
 
         # update the sensor data
-        for _, s_dc in userdata["sensors"].items():
-            if s_dc["type"] == "Zephyr":
-                # update the sensor data
-                if s_dc["sensor"].update():
-                    # publish the sensor data
-                    s_dc["sensor"].publish(client)
+        for s_dc in userdata["sensors"].values():
+            if s_dc["type"] == "Zephyr" and s_dc["sensor"].update():
+                # publish the sensor data
+                s_dc["sensor"].publish(client)
 
         # calculate the time to sleep
         e_t = datetime.now(timezone.utc)
@@ -59,7 +58,7 @@ def on_connect(client, userdata, flags, rc, properties):
             sys.exit(1)
     logger.info("Connected to MQTT Broker!")
     # send the Home Assistant discovery messages
-    for _, s_dc in userdata["sensors"].items():
+    for s_dc in userdata["sensors"].values():
         if s_dc["type"] == "Zephyr" and s_dc["hass_discovery"] is True:
             s_dc["sensor"].hass_discovery(client)
 
@@ -96,7 +95,7 @@ def zapi2mqtt():
     # Setup the mqtt client
     logger.info("Setting up MQTT client")
     client = mqtt.Client(
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2, userdata=userdata
+        callback_api_version=CallbackAPIVersion.VERSION2, userdata=userdata
     )
     client.on_connect = on_connect
     # connect to the mqtt broker using username / password authentication

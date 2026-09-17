@@ -23,19 +23,19 @@ class SensorLocation:
     """Class definition for a sensor location"""
 
     loc_override: bool = False
-    latitude: float = None
-    longitude: float = None
+    latitude: float | None = None
+    longitude: float | None = None
 
 
 @dataclasses.dataclass
 class ZephyrMeasurement:
     """Class definition for a Zephyr measurement"""
 
-    name: str = None
-    apiname: str = None
-    unit: str = None
-    device_class: str = None
-    data: float = None
+    name: str
+    apiname: str
+    unit: str
+    device_class: str
+    data: float | None = None
 
 
 # EarthSense Zephyr
@@ -277,13 +277,14 @@ class ZephyrSensor:
                 dis_msg["json_attributes_topic"] = self.topic + "/attributes"
             # publish the discovery message
             client.publish(
-                f"homeassistant/sensor/z{str(self.znum)}_{meas.name}/config",
+                f"homeassistant/sensor/z{self.znum}_{meas.name}/config",
                 json.dumps(dis_msg),
                 retain=True,
             )
 
     def hass_sensor(self, meas):
         """Build the Home Assistant sensor discovery message"""
+        dis_msg: dict[str, object]
         dis_msg = {
             "name": f"Zephyr {self.znum} {meas.name}",
             "unique_id": f"z{self.znum}_{meas.name}",

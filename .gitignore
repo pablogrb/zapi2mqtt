@@ -6,7 +6,5 @@ __pycache__/
 .vscode/
 # virtual env for testing
 .venv/
-# Github specific files
-.github/
 # Ruff
 .ruff_cache/

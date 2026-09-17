@@ -9,6 +9,7 @@ from datetime import datetime, timedelta, timezone
 from time import sleep
 
 import requests
+from requests.auth import HTTPBasicAuth
 
 # Set up logging
 logging.basicConfig(
@@ -52,6 +53,9 @@ class ZephyrSensor:
         # Credentials
         self.username = userdata["creds"]["ZAPI"]["username"]
         self.password = userdata["creds"]["ZAPI"]["password"]
+        # Bearer token is valid for 7 days according to the Auth API docs
+        self._token: str | None = None
+        self._token_expiry: datetime | None = None
         # Check if the sensor is available and retrieve the model and firmware
         self.available = self.zinfo()
         if not self.available:
@@ -88,27 +92,105 @@ class ZephyrSensor:
         # MQTT topic
         self.topic = f"zapi2mqtt/zephyr/{znum}"
 
-    def zinfo(self):
-        """Return the Zephyr sensor information"""
-        url = (
-            f"https://data.earthsense.co.uk/getzephyrs/{self.username}/{self.password}"
-        )
-        # pull the zephyr data from the api
-        with requests.get(url=url, timeout=180) as url:
-            # Check if API request was successful
-            if url.status_code == 200:
-                zephyr_list = json.loads(url.text)
-                logger.info("Retrieved zephyr data for user %s", self.username)
-            else:
+    def _get_token(self, force_refresh=False):
+        """Return a valid bearer token from the EarthSense Auth API."""
+        now = datetime.now(timezone.utc)
+        if (
+            not force_refresh
+            and self._token is not None
+            and self._token_expiry is not None
+            and now < self._token_expiry
+        ):
+            return self._token
+
+        auth_url = "https://service.earthsense.co.uk/auth/api/AuthUser"
+        with requests.get(
+            auth_url,
+            auth=HTTPBasicAuth(self.username, self.password),
+            timeout=180,
+        ) as response:
+            if response.status_code != 200:
                 try:
-                    raise ValueError(f"API returned: {url.text}")
+                    raise ValueError(f"Auth API returned {response.status_code}: {response.text}")
                 except ValueError as exc:
                     logger.error(exc)
                     sys.exit(1)
 
+            try:
+                token_payload = response.json()
+            except ValueError:
+                token_payload = response.text
+
+        token = None
+        if isinstance(token_payload, dict):
+            for key in ("token", "access_token", "jwt", "bearer", "authToken"):
+                if key in token_payload and isinstance(token_payload[key], str):
+                    token = token_payload[key]
+                    break
+            if token is None:
+                for value in token_payload.values():
+                    if isinstance(value, str) and value.count(".") == 2:
+                        token = value
+                        break
+        elif isinstance(token_payload, str) and token_payload:
+            token = token_payload.strip()
+
+        if not token:
+            try:
+                raise ValueError("Could not parse bearer token from Auth API response")
+            except ValueError as exc:
+                logger.error(exc)
+                sys.exit(1)
+
+        self._token = token
+        self._token_expiry = now + timedelta(days=7) - timedelta(minutes=5)
+        return self._token
+
+    def _auth_headers(self):
+        """Build authenticated request headers for Zephyr API calls."""
+        token = self._get_token()
+        return {
+            "accept": "application/json",
+            "Authorization": f"Bearer {token}",
+        }
+
+    def zinfo(self):
+        """Return the Zephyr sensor information"""
+        url = "https://service.earthsense.co.uk/zephyr/api/zephyr"
+        headers = self._auth_headers()
+        # pull the zephyr data from the api
+        zephyr_list = None
+        for _ in range(2):
+            with requests.get(url=url, headers=headers, timeout=180) as response:
+                if response.status_code == 200:
+                    zephyr_list = response.json()
+                    logger.info("Retrieved zephyr data for user %s", self.username)
+                    break
+
+                if response.status_code == 401:
+                    headers = {
+                        "accept": "application/json",
+                        "Authorization": (
+                            f"Bearer {self._get_token(force_refresh=True)}"
+                        ),
+                    }
+                    continue
+
+                try:
+                    raise ValueError(
+                        f"API returned {response.status_code}: {response.text}"
+                    )
+                except ValueError as exc:
+                    logger.error(exc)
+                    sys.exit(1)
+
+        if zephyr_list is None:
+            logger.error("Unable to retrieve zephyr list after token refresh")
+            sys.exit(1)
+
         # Check if the Zephyr is available
         for zephyr in zephyr_list:
-            if zephyr["zNumber"] == self.znum:
+            if zephyr["znumber"] == int(self.znum):
                 self.model = zephyr["serialNumber"][0:3]
                 self.firmware = zephyr["firmwareVersion"]
                 return True
@@ -116,15 +198,15 @@ class ZephyrSensor:
 
     def update(self):
         """Update the sensor data from the API"""
-        # get the closest 15 minute interval to the datetime
+        # get the closest 5 minute interval to the datetime
         # get the current datetime in UTC
         now = datetime.now(timezone.utc)
-        # round down to the nearest quarter hour
+        # round down to the nearest 5 minute boundary
         interval = 5
         end_dt = now - timedelta(
             minutes=now.minute % 5, seconds=now.second, microseconds=now.microsecond
         )
-        # subtract 'interval' minutes
+        # subtract interval minutes
         str_dt = end_dt - timedelta(minutes=interval)
 
         # set the averaging chain id
@@ -141,30 +223,15 @@ class ZephyrSensor:
         # 15 (5 minute averaging)
         avg_id = "15"
 
-        # set the base url
-        base_url = "https://data.earthsense.co.uk/measurementdata/v1"
-
-        # build the request url
-        req_url = (
-            base_url
-            + "/"
-            + str(self.znum)
-            + "/"
-            + str_dt.strftime("%Y%m%d%H%M")
-            + "/"
-            + end_dt.strftime("%Y%m%d%H%M")
-            + "/"
-            + self.slot
-            + "/"
-            + avg_id
-        )
-
-        # set the headers
-        req_headers = {
-            "accept": "application/json",
-            "username": self.username,
-            "userkey": self.password,
+        # build the request for v3 endpoint
+        req_url = f"https://service.earthsense.co.uk/zephyr/api/zephyr/{int(self.znum)}/data"
+        req_params = {
+            "start_date": str_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "end_date": end_dt.strftime("%Y-%m-%dT%H:%M:%S"),
+            "averaging": int(avg_id),
+            "slots": self.slot,
         }
+        req_headers = self._auth_headers()
 
         # HACK: try the api 5 times to deal with random 401 unauthorized errors
         tries = 5
@@ -172,28 +239,42 @@ class ZephyrSensor:
             # catch connection errors in cases of slow dns
             try:
                 # pull the zephyr data from the api
-                with requests.get(url=req_url, headers=req_headers, timeout=180) as url:
+                with requests.get(
+                    url=req_url,
+                    params=req_params,
+                    headers=req_headers,
+                    timeout=180,
+                ) as response:
                     # Check if API request was successful
-                    if url.status_code == 200:
-                        zephyr_dict = json.loads(url.text)
+                    if response.status_code == 200:
+                        zephyr_dict = response.json()
                         logger.info("Retrieved zephyr data for %s", self.znum)
                         break
                     # no data available
-                    if url.status_code == 240:
+                    if response.status_code == 240:
                         logger.warning("No data available for %s", self.znum)
                         return False
-                    # retry on 401 unauthorized or 500 internal server error
-                    if url.status_code == 401 or url.status_code == 500:
+                    # retry on 401 unauthorized, 429 rate limit, or 500 server error
+                    if response.status_code in (401, 429, 500):
+                        if response.status_code == 401:
+                            req_headers = {
+                                "accept": "application/json",
+                                "Authorization": (
+                                    f"Bearer {self._get_token(force_refresh=True)}"
+                                ),
+                            }
                         logger.warning(
-                            "API responded %i, trying again (attempt = %s",
-                            url.status_code,
+                            "API responded %i, trying again (attempt = %s)",
+                            response.status_code,
                             req_try,
                         )
                         sleep(15)
                         continue
                     # raise an error and exit on any other status code
                     try:
-                        raise ValueError(f"API returned: {url.text}")
+                        raise ValueError(
+                            f"API returned {response.status_code}: {response.text}"
+                        )
                     except ValueError as exc:
                         logger.error(exc)
                         sys.exit(1)
@@ -207,23 +288,45 @@ class ZephyrSensor:
             logger.warning("API failed to respond OK after %s tries", tries)
             return False
 
-        # Parse the dictionary into the sensor data
-        avg_key = ""
-        if avg_id == "3":
-            avg_key = "15 min average on the quarter hours"
-        elif avg_id == "15":
-            avg_key = "5 minute averaging on the hour"
+        # Parse the v3 data structure into the sensor data
+        data_groups = zephyr_dict.get("data", {}).get("data", [])
+        if not data_groups:
+            logger.warning("No measurement series returned for %s", self.znum)
+            return False
+
+        series = data_groups[0].get("data", [])
+        series_values = {}
+        for item in series:
+            if "species" not in item:
+                continue
+            latest = None
+            for value in reversed(item.get("data", [])):
+                if isinstance(value, (int, float)) and not isinstance(value, bool):
+                    latest = float(value)
+                    break
+            series_values[item["species"]] = latest
+
+        # Keep location in sync with server-reported values unless overridden
         if not self.loc.loc_override:
-            self.loc.latitude = zephyr_dict["data"][avg_key]["head"]["latitude"][
-                "data"
-            ][0]
-            self.loc.longitude = zephyr_dict["data"][avg_key]["head"]["longitude"][
-                "data"
-            ][0]
+            self.loc.latitude = series_values.get("latitude")
+            self.loc.longitude = series_values.get("longitude")
+
+        species_aliases = {
+            "NO": ["NO"],
+            "NO2": ["NO2"],
+            "O3": ["O3"],
+            "PM1": ["PM1", "particulatePM1"],
+            "PM25": ["PM2p5", "PM25", "particulatePM25"],
+            "PM10": ["PM10", "particulatePM10"],
+        }
         for meas in self.meas:
             if meas.name == "aqi":
                 continue
-            meas.data = zephyr_dict["data"][avg_key][self.skey][meas.apiname]["data"][0]
+            meas.data = None
+            for species in species_aliases.get(meas.name, [meas.apiname]):
+                if species in series_values:
+                    meas.data = series_values[species]
+                    break
 
         # Calculate the AQI
         self.aqi = self.calc_aqi()
@@ -250,6 +353,9 @@ class ZephyrSensor:
                     if meas.data <= aqi_break:
                         aqi_list.append(i)
                         break
+
+        if not aqi_list:
+            return "No Data"
 
         # return aqi_cats[max(aqi_list)]
         return max(aqi_list)

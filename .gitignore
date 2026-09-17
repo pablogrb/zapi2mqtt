@@ -6,3 +6,5 @@ __pycache__/
 .vscode/
 # virtual env for testing
 .venv/
+# Ruff
+.ruff_cache/

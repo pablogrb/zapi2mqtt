@@ -1,4 +1,5 @@
-'''Class definition for the zapi sensors'''
+"""Class definition for the zapi sensors"""
+
 # imports
 import dataclasses
 import json
@@ -15,62 +16,72 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
 # Dataclasses
 @dataclasses.dataclass
-class SensorLocation():
-    '''Class definition for a sensor location'''
+class SensorLocation:
+    """Class definition for a sensor location"""
+
     loc_override: bool = False
     latitude: float = None
     longitude: float = None
 
+
 @dataclasses.dataclass
-class ZephyrMeasurement():
-    '''Class definition for a Zephyr measurement'''
+class ZephyrMeasurement:
+    """Class definition for a Zephyr measurement"""
+
     name: str = None
     apiname: str = None
     unit: str = None
     device_class: str = None
     data: float = None
 
+
 # EarthSense Zephyr
-class ZephyrSensor():
-    '''Class definition for an EarthSense Zephyr sensor'''
+class ZephyrSensor:
+    """Class definition for an EarthSense Zephyr sensor"""
+
     def __init__(self, znum, userdata):
-        '''Initialize the Zephyr sensor'''
+        """Initialize the Zephyr sensor"""
         logger.info("Initializing Zephyr sensor %s", znum)
         # Zephyr Number and slot
         self.znum = znum
-        self.slot = userdata['sensors'][znum]['slot']
+        self.slot = userdata["sensors"][znum]["slot"]
         self.skey = f"slot{userdata['sensors'][znum]['slot']}"
         # Credentials
-        self.username = userdata['creds']['ZAPI']['username']
-        self.password = userdata['creds']['ZAPI']['password']
+        self.username = userdata["creds"]["ZAPI"]["username"]
+        self.password = userdata["creds"]["ZAPI"]["password"]
         # Check if the sensor is available and retrieve the model and firmware
         self.available = self.zinfo()
         if not self.available:
             try:
-                raise ValueError(f"Zephyr {znum} is not available for user {self.username}")
+                raise ValueError(
+                    f"Zephyr {znum} is not available for user {self.username}"
+                )
             except ValueError as exc:
                 logger.error(exc)
                 sys.exit(1)
         # Zephyr Location
-        if ('latitude' in userdata['sensors'][znum]) and ('longitude' in userdata['sensors'][znum]):
+        if ("latitude" in userdata["sensors"][znum]) and (
+            "longitude" in userdata["sensors"][znum]
+        ):
             self.loc = SensorLocation(
                 loc_override=True,
-                latitude=userdata['sensors'][znum]['latitude'],
-                longitude=userdata['sensors'][znum]['longitude']
+                latitude=userdata["sensors"][znum]["latitude"],
+                longitude=userdata["sensors"][znum]["longitude"],
             )
         else:
             self.loc = SensorLocation()
         # Zephyr measurements
         self.meas = [
-            ZephyrMeasurement('NO', 'NO', 'µg/m³', 'nitrogen_monoxide', None),
-            ZephyrMeasurement('NO2', 'NO2', 'µg/m³', 'nitrogen_dioxide', None),
-            ZephyrMeasurement('O3', 'O3', 'µg/m³', 'ozone', None),
-            ZephyrMeasurement('PM1', 'particulatePM1', 'µg/m³', 'pm1', None),
-            ZephyrMeasurement('PM25', 'particulatePM25', 'µg/m³', 'pm25', None),
-            ZephyrMeasurement('PM10', 'particulatePM10', 'µg/m³', 'pm10', None),
-            ZephyrMeasurement('aqi', '', '', 'aqi', None)
+            ZephyrMeasurement("NO", "NO", "µg/m³", "nitrogen_monoxide", None),
+            ZephyrMeasurement("NO2", "NO2", "µg/m³", "nitrogen_dioxide", None),
+            ZephyrMeasurement("O3", "O3", "µg/m³", "ozone", None),
+            ZephyrMeasurement("PM1", "particulatePM1", "µg/m³", "pm1", None),
+            ZephyrMeasurement("PM25", "particulatePM25", "µg/m³", "pm25", None),
+            ZephyrMeasurement("PM10", "particulatePM10", "µg/m³", "pm10", None),
+            ZephyrMeasurement("aqi", "", "", "aqi", None),
         ]
         # AQI
         self.aqi = "No Data"
@@ -78,8 +89,10 @@ class ZephyrSensor():
         self.topic = f"zapi2mqtt/zephyr/{znum}"
 
     def zinfo(self):
-        '''Return the Zephyr sensor information'''
-        url = f"https://data.earthsense.co.uk/getzephyrs/{self.username}/{self.password}"
+        """Return the Zephyr sensor information"""
+        url = (
+            f"https://data.earthsense.co.uk/getzephyrs/{self.username}/{self.password}"
+        )
         # pull the zephyr data from the api
         with requests.get(url=url, timeout=180) as url:
             # Check if API request was successful
@@ -88,21 +101,21 @@ class ZephyrSensor():
                 logger.info("Retrieved zephyr data for user %s", self.username)
             else:
                 try:
-                    raise ValueError(f'API returned: {url.text}')
+                    raise ValueError(f"API returned: {url.text}")
                 except ValueError as exc:
                     logger.error(exc)
                     sys.exit(1)
 
         # Check if the Zephyr is available
         for zephyr in zephyr_list:
-            if zephyr['zNumber'] == self.znum:
-                self.model = zephyr['serialNumber'][0:3]
-                self.firmware = zephyr['firmwareVersion']
+            if zephyr["zNumber"] == self.znum:
+                self.model = zephyr["serialNumber"][0:3]
+                self.firmware = zephyr["firmwareVersion"]
                 return True
         return False
 
     def update(self):
-        '''Update the sensor data from the API'''
+        """Update the sensor data from the API"""
         # get the closest 15 minute interval to the datetime
         # get the current datetime in UTC
         now = datetime.now(timezone.utc)
@@ -132,15 +145,25 @@ class ZephyrSensor():
         base_url = "https://data.earthsense.co.uk/measurementdata/v1"
 
         # build the request url
-        req_url = (base_url + "/" + str(self.znum) + "/" +
-                    str_dt.strftime("%Y%m%d%H%M") + "/" + end_dt.strftime("%Y%m%d%H%M") + "/" +
-                    self.slot + "/" + avg_id)
+        req_url = (
+            base_url
+            + "/"
+            + str(self.znum)
+            + "/"
+            + str_dt.strftime("%Y%m%d%H%M")
+            + "/"
+            + end_dt.strftime("%Y%m%d%H%M")
+            + "/"
+            + self.slot
+            + "/"
+            + avg_id
+        )
 
         # set the headers
         req_headers = {
-            'accept': "application/json",
-            'username': self.username,
-            'userkey': self.password
+            "accept": "application/json",
+            "username": self.username,
+            "userkey": self.password,
         }
 
         # HACK: try the api 5 times to deal with random 401 unauthorized errors
@@ -161,13 +184,16 @@ class ZephyrSensor():
                         return False
                     # retry on 401 unauthorized or 500 internal server error
                     if url.status_code == 401 or url.status_code == 500:
-                        logger.warning("API responded %i, trying again (attempt = %s",
-                                       url.status_code, req_try)
+                        logger.warning(
+                            "API responded %i, trying again (attempt = %s",
+                            url.status_code,
+                            req_try,
+                        )
                         sleep(15)
                         continue
                     # raise an error and exit on any other status code
                     try:
-                        raise ValueError(f'API returned: {url.text}')
+                        raise ValueError(f"API returned: {url.text}")
                     except ValueError as exc:
                         logger.error(exc)
                         sys.exit(1)
@@ -182,18 +208,22 @@ class ZephyrSensor():
             return False
 
         # Parse the dictionary into the sensor data
-        avg_key = ''
+        avg_key = ""
         if avg_id == "3":
-            avg_key = '15 min average on the quarter hours'
+            avg_key = "15 min average on the quarter hours"
         elif avg_id == "15":
-            avg_key = '5 minute averaging on the hour'
+            avg_key = "5 minute averaging on the hour"
         if not self.loc.loc_override:
-            self.loc.latitude = zephyr_dict['data'][avg_key]['head']['latitude']['data'][0]
-            self.loc.longitude = zephyr_dict['data'][avg_key]['head']['longitude']['data'][0]
+            self.loc.latitude = zephyr_dict["data"][avg_key]["head"]["latitude"][
+                "data"
+            ][0]
+            self.loc.longitude = zephyr_dict["data"][avg_key]["head"]["longitude"][
+                "data"
+            ][0]
         for meas in self.meas:
-            if meas.name == 'aqi':
+            if meas.name == "aqi":
                 continue
-            meas.data = zephyr_dict['data'][avg_key][self.skey][meas.apiname]['data'][0]
+            meas.data = zephyr_dict["data"][avg_key][self.skey][meas.apiname]["data"][0]
 
         # Calculate the AQI
         self.aqi = self.calc_aqi()
@@ -201,14 +231,14 @@ class ZephyrSensor():
         return True
 
     def calc_aqi(self):
-        '''Calcualte the European Air Quality Index'''
+        """Calcualte the European Air Quality Index"""
         # AQI breakpoints
         aqi_breaks = {
-            'PM25': [5, 15, 50, 90, 140],
-            'PM10': [15, 45, 120, 195, 270],
-            'NO2': [10, 25, 60, 100, 150],
-            'O3': [60, 100, 120, 160, 180],
-            'SO2': [20, 40, 125, 190, 275],
+            "PM25": [5, 15, 50, 90, 140],
+            "PM10": [15, 45, 120, 195, 270],
+            "NO2": [10, 25, 60, 100, 150],
+            "O3": [60, 100, 120, 160, 180],
+            "SO2": [20, 40, 125, 190, 275],
         }
         # AQI categories
         # aqi_cats = ['Good', 'Fair', 'Moderate', 'Poor', 'Very Poor', 'Extremely Poor']
@@ -225,35 +255,35 @@ class ZephyrSensor():
         return max(aqi_list)
 
     def publish(self, client):
-        '''Publish the sensor data to the MQTT broker'''
+        """Publish the sensor data to the MQTT broker"""
         for meas in self.meas:
             client.publish(self.topic + "/" + meas.name, meas.data)
         client.publish(self.topic + "/aqi", self.aqi)
         # build the location attributes json
-        loc_attr = {
-            "latitude": self.loc.latitude,
-            "longitude": self.loc.longitude
-        }
+        loc_attr = {"latitude": self.loc.latitude, "longitude": self.loc.longitude}
         client.publish(self.topic + "/attributes", json.dumps(loc_attr))
 
     def hass_discovery(self, client):
-        '''Publish the Home Assistant discovery message for every sensor'''
-        logger.info("Publishing Home Assistant discovery messages for Zephyr %s", self.znum)
+        """Publish the Home Assistant discovery message for every sensor"""
+        logger.info(
+            "Publishing Home Assistant discovery messages for Zephyr %s", self.znum
+        )
         # concentration sensor discovery
         for meas in self.meas:
             # build the discovery message
             dis_msg = self.hass_sensor(meas)
-            dis_msg['device'] = self.hass_device()
-            if meas.name == 'aqi':
-                dis_msg['json_attributes_topic'] = self.topic + "/attributes"
+            dis_msg["device"] = self.hass_device()
+            if meas.name == "aqi":
+                dis_msg["json_attributes_topic"] = self.topic + "/attributes"
             # publish the discovery message
             client.publish(
                 f"homeassistant/sensor/z{str(self.znum)}_{meas.name}/config",
-                json.dumps(dis_msg), retain=True
+                json.dumps(dis_msg),
+                retain=True,
             )
 
     def hass_sensor(self, meas):
-        '''Build the Home Assistant sensor discovery message'''
+        """Build the Home Assistant sensor discovery message"""
         dis_msg = {
             "name": f"Zephyr {self.znum} {meas.name}",
             "unique_id": f"z{self.znum}_{meas.name}",
@@ -263,21 +293,21 @@ class ZephyrSensor():
         }
         if meas.name == "aqi":
             dis_msg["state_topic"] = self.topic + "/aqi"
-            dis_msg['device_class'] = "aqi"
+            dis_msg["device_class"] = "aqi"
             return dis_msg
 
         dis_msg["state_topic"] = self.topic + "/" + meas.name
-        dis_msg['state_class'] = "measurement"
-        dis_msg['unit_of_measurement'] = meas.unit
-        dis_msg['device_class'] = meas.device_class
+        dis_msg["state_class"] = "measurement"
+        dis_msg["unit_of_measurement"] = meas.unit
+        dis_msg["device_class"] = meas.device_class
         return dis_msg
 
     def hass_device(self):
-        '''Build the Home Assistant device discovery message'''
+        """Build the Home Assistant device discovery message"""
         return {
             "identifiers": [f"Z{self.znum}"],
             "name": "Zephyr",
             "manufacturer": "EarthSense",
             "model": self.model,
-            "sw_version": self.firmware
+            "sw_version": self.firmware,
         }

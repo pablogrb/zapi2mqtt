@@ -5,7 +5,7 @@ import dataclasses
 import json
 import logging
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from time import sleep
 
 import requests
@@ -94,7 +94,7 @@ class ZephyrSensor:
 
     def _get_token(self, force_refresh=False):
         """Return a valid bearer token from the EarthSense Auth API."""
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         if (
             not force_refresh
             and self._token is not None
@@ -111,7 +111,9 @@ class ZephyrSensor:
         ) as response:
             if response.status_code != 200:
                 try:
-                    raise ValueError(f"Auth API returned {response.status_code}: {response.text}")
+                    raise ValueError(
+                        f"Auth API returned {response.status_code}: {response.text}"
+                    )
                 except ValueError as exc:
                     logger.error(exc)
                     sys.exit(1)
@@ -200,7 +202,7 @@ class ZephyrSensor:
         """Update the sensor data from the API"""
         # get the closest 5 minute interval to the datetime
         # get the current datetime in UTC
-        now = datetime.now(timezone.utc)
+        now = datetime.now(UTC)
         # round down to the nearest 5 minute boundary
         interval = 5
         end_dt = now - timedelta(
@@ -224,7 +226,9 @@ class ZephyrSensor:
         avg_id = "15"
 
         # build the request for v3 endpoint
-        req_url = f"https://service.earthsense.co.uk/zephyr/api/zephyr/{int(self.znum)}/data"
+        req_url = (
+            f"https://service.earthsense.co.uk/zephyr/api/zephyr/{int(self.znum)}/data"
+        )
         req_params = {
             "start_date": str_dt.strftime("%Y-%m-%dT%H:%M:%S"),
             "end_date": end_dt.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -289,12 +293,16 @@ class ZephyrSensor:
             return False
 
         # Parse the v3 data structure into the sensor data
-        data_groups = zephyr_dict.get("data", {}).get("data", [])
+        data_groups = zephyr_dict["data"]
+        if not isinstance(data_groups, list):
+            raise TypeError("Expected a list of measurement data groups")
         if not data_groups:
             logger.warning("No measurement series returned for %s", self.znum)
             return False
 
-        series = data_groups[0].get("data", [])
+        series = data_groups[0]["data"]
+        if not isinstance(series, list):
+            raise TypeError("Expected a list of measurement series")
         series_values = {}
         for item in series:
             if "species" not in item:
